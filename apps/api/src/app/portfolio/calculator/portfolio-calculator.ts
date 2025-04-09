@@ -49,7 +49,7 @@ import {
   min,
   subDays
 } from 'date-fns';
-import { isNumber, sortBy, sum, uniqBy } from 'lodash';
+import { isNumber, sortBy, /* sum, */ uniqBy } from 'lodash';
 
 export abstract class PortfolioCalculator {
   protected static readonly ENABLE_LOGGING = false;
@@ -730,11 +730,11 @@ export abstract class PortfolioCalculator {
           );
         }
 
-        const timeWeightedInvestmentValue =
-          totalInvestmentValuesWithCurrencyEffect.length > 0
-            ? sum(totalInvestmentValuesWithCurrencyEffect) /
-              totalInvestmentValuesWithCurrencyEffect.length
-            : 0;
+        // const timeWeightedInvestmentValue =
+        //   totalInvestmentValuesWithCurrencyEffect.length > 0
+        //     ? sum(totalInvestmentValuesWithCurrencyEffect) /
+        //       totalInvestmentValuesWithCurrencyEffect.length
+        //     : 0;
 
         chart.push({
           ...historicalDataItem,
@@ -743,14 +743,14 @@ export abstract class PortfolioCalculator {
           netPerformanceWithCurrencyEffect:
             netPerformanceWithCurrencyEffectSinceStartDate,
           netPerformanceInPercentage:
-            timeWeightedInvestmentValue === 0
-              ? 0
-              : netPerformanceSinceStartDate / timeWeightedInvestmentValue,
+            historicalDataItem.totalInvestmentValueWithCurrencyEffect === 0
+            ? 0
+            : netPerformanceSinceStartDate / historicalDataItem.totalInvestmentValueWithCurrencyEffect,
           netPerformanceInPercentageWithCurrencyEffect:
-            timeWeightedInvestmentValue === 0
-              ? 0
-              : netPerformanceWithCurrencyEffectSinceStartDate /
-                timeWeightedInvestmentValue
+            historicalDataItem.totalInvestmentValueWithCurrencyEffect === 0
+            ? 0
+            : netPerformanceWithCurrencyEffectSinceStartDate /
+              historicalDataItem.totalInvestmentValueWithCurrencyEffect,
           // TODO: Add net worth with valuables
           // netWorth: totalCurrentValueWithCurrencyEffect
           //   .plus(totalAccountBalanceWithCurrencyEffect)

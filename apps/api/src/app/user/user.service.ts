@@ -41,6 +41,7 @@ import {
   permissions
 } from '@ghostfolio/common/permissions';
 import { UserWithSettings } from '@ghostfolio/common/types';
+import { PerformanceCalculationType } from '@ghostfolio/common/types/performance-calculation-type.type';
 
 import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -51,11 +52,10 @@ import { sortBy, without } from 'lodash';
 
 @Injectable()
 export class UserService {
-  private i18nService = new I18nService();
-
   public constructor(
     private readonly configurationService: ConfigurationService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly i18nService: I18nService,
     private readonly orderService: OrderService,
     private readonly prismaService: PrismaService,
     private readonly propertyService: PropertyService,
@@ -95,13 +95,13 @@ export class UserService {
   }
 
   public async getUser(
-    { Account, id, permissions, Settings, subscription }: UserWithSettings,
+    { accounts, id, permissions, Settings, subscription }: UserWithSettings,
     aLocale = locale
   ): Promise<IUser> {
     const userData = await Promise.all([
       this.prismaService.access.findMany({
         include: {
-          User: true
+          user: true
         },
         orderBy: { alias: 'asc' },
         where: { GranteeUser: { id } }
@@ -141,6 +141,7 @@ export class UserService {
     }
 
     return {
+      accounts,
       activitiesCount,
       id,
       permissions,
@@ -154,7 +155,6 @@ export class UserService {
           permissions: accessItem.permissions
         };
       }),
-      accounts: Account,
       dateOfFirstActivity: firstActivity?.date ?? new Date(),
       settings: {
         ...(Settings.settings as UserSettings),
@@ -181,7 +181,7 @@ export class UserService {
     const {
       Access,
       accessToken,
-      Account,
+      accounts,
       Analytics,
       authChallenge,
       createdAt,
@@ -189,18 +189,18 @@ export class UserService {
       provider,
       role,
       Settings,
-      Subscription,
+      subscriptions,
       thirdPartyId,
       updatedAt
     } = await this.prismaService.user.findUnique({
       include: {
         Access: true,
-        Account: {
+        accounts: {
           include: { Platform: true }
         },
         Analytics: true,
         Settings: true,
-        Subscription: true
+        subscriptions: true
       },
       where: userWhereUniqueInput
     });
@@ -208,7 +208,7 @@ export class UserService {
     const user: UserWithSettings = {
       Access,
       accessToken,
-      Account,
+      accounts,
       authChallenge,
       createdAt,
       id,
@@ -246,6 +246,12 @@ export class UserService {
         ? 'max'
         : ((user.Settings.settings as UserSettings)?.dateRange ?? 'max');
 
+    // Set default value for performance calculation type
+    if (!(user.Settings.settings as UserSettings)?.performanceCalculationType) {
+      (user.Settings.settings as UserSettings).performanceCalculationType =
+        PerformanceCalculationType.ROAI;
+    }
+
     // Set default value for view mode
     if (!(user.Settings.settings as UserSettings).viewMode) {
       (user.Settings.settings as UserSettings).viewMode = 'DEFAULT';
@@ -257,6 +263,8 @@ export class UserService {
           user.Settings.settings
         ),
       AccountClusterRiskSingleAccount: new AccountClusterRiskSingleAccount(
+        undefined,
+        undefined,
         undefined,
         {}
       ).getSettings(user.Settings.settings),
@@ -292,9 +300,13 @@ export class UserService {
         ).getSettings(user.Settings.settings),
       EmergencyFundSetup: new EmergencyFundSetup(
         undefined,
+        undefined,
+        undefined,
         undefined
       ).getSettings(user.Settings.settings),
       FeeRatioInitialInvestment: new FeeRatioInitialInvestment(
+        undefined,
+        undefined,
         undefined,
         undefined,
         undefined
@@ -339,9 +351,9 @@ export class UserService {
     }
 
     if (this.configurationService.get('ENABLE_FEATURE_SUBSCRIPTION')) {
-      user.subscription = this.subscriptionService.getSubscription({
-        createdAt: user.createdAt,
-        subscriptions: Subscription
+      user.subscription = await this.subscriptionService.getSubscription({
+        subscriptions,
+        createdAt: user.createdAt
       });
 
       if (user.subscription?.type === 'Basic') {
@@ -349,18 +361,20 @@ export class UserService {
           new Date(),
           user.createdAt
         );
-        let frequency = 10;
+        let frequency = 7;
 
-        if (daysSinceRegistration > 365) {
+        if (daysSinceRegistration > 720) {
+          frequency = 1;
+        } else if (daysSinceRegistration > 360) {
           frequency = 2;
         } else if (daysSinceRegistration > 180) {
           frequency = 3;
         } else if (daysSinceRegistration > 60) {
           frequency = 4;
         } else if (daysSinceRegistration > 30) {
-          frequency = 6;
+          frequency = 5;
         } else if (daysSinceRegistration > 15) {
-          frequency = 8;
+          frequency = 6;
         }
 
         if (Analytics?.activityCount % frequency === 1) {
@@ -373,6 +387,7 @@ export class UserService {
           permissions.createAccess,
           permissions.createMarketDataOfOwnAssetProfile,
           permissions.createOwnTag,
+          permissions.createWatchlistItem,
           permissions.readAiPrompt,
           permissions.readMarketDataOfOwnAssetProfile,
           permissions.updateMarketDataOfOwnAssetProfile
@@ -384,14 +399,26 @@ export class UserService {
         // Reset holdings view mode
         user.Settings.settings.holdingsViewMode = undefined;
       } else if (user.subscription?.type === 'Premium') {
-        currentPermissions.push(permissions.createApiKey);
-        currentPermissions.push(permissions.enableDataProviderGhostfolio);
-        currentPermissions.push(permissions.reportDataGlitch);
+        if (!hasRole(user, Role.DEMO)) {
+          currentPermissions.push(permissions.createApiKey);
+          currentPermissions.push(permissions.enableDataProviderGhostfolio);
+          currentPermissions.push(permissions.reportDataGlitch);
+        }
 
         currentPermissions = without(
           currentPermissions,
           permissions.deleteOwnUser
         );
+
+        // Reset offer
+        user.subscription.offer.coupon = undefined;
+        user.subscription.offer.couponId = undefined;
+        user.subscription.offer.durationExtension = undefined;
+        user.subscription.offer.label = undefined;
+      }
+
+      if (hasRole(user, Role.ADMIN)) {
+        currentPermissions.push(permissions.syncDemoUserAccount);
       }
     }
 
@@ -415,11 +442,11 @@ export class UserService {
       }
     }
 
-    if (!environment.production && role === 'ADMIN') {
+    if (!environment.production && hasRole(user, Role.ADMIN)) {
       currentPermissions.push(permissions.impersonateAllUsers);
     }
 
-    user.Account = sortBy(user.Account, ({ name }) => {
+    user.accounts = sortBy(user.accounts, ({ name }) => {
       return name.toLowerCase();
     });
     user.permissions = currentPermissions.sort();
@@ -456,7 +483,7 @@ export class UserService {
     const user = await this.prismaService.user.create({
       data: {
         ...data,
-        Account: {
+        accounts: {
           create: {
             currency: DEFAULT_CURRENCY,
             name: this.i18nService.getTranslation({
@@ -478,7 +505,7 @@ export class UserService {
     if (this.configurationService.get('ENABLE_FEATURE_SUBSCRIPTION')) {
       await this.prismaService.analytics.create({
         data: {
-          User: { connect: { id: user.id } }
+          user: { connect: { id: user.id } }
         }
       });
     }
@@ -573,7 +600,7 @@ export class UserService {
     const { settings } = await this.prismaService.settings.upsert({
       create: {
         settings: userSettings as unknown as Prisma.JsonObject,
-        User: {
+        user: {
           connect: {
             id: userId
           }

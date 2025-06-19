@@ -42,30 +42,30 @@ export class SymbolProfileService {
   }) {
     return this.prismaService.symbolProfile.findMany({
       include: {
-        Order: {
+        activities: {
           include: {
-            User: true
+            user: true
           }
         }
       },
       orderBy: [{ symbol: 'asc' }],
       where: {
-        isActive: true,
-        Order: withUserSubscription
+        activities: withUserSubscription
           ? {
               some: {
-                User: {
-                  Subscription: { some: { expiresAt: { gt: new Date() } } }
+                user: {
+                  subscriptions: { some: { expiresAt: { gt: new Date() } } }
                 }
               }
             }
           : {
               every: {
-                User: {
-                  Subscription: { none: { expiresAt: { gt: new Date() } } }
+                user: {
+                  subscriptions: { none: { expiresAt: { gt: new Date() } } }
                 }
               }
-            }
+            },
+        isActive: true
       }
     });
   }
@@ -77,9 +77,9 @@ export class SymbolProfileService {
       .findMany({
         include: {
           _count: {
-            select: { Order: true }
+            select: { activities: true }
           },
-          Order: {
+          activities: {
             orderBy: {
               date: 'asc'
             },
@@ -109,7 +109,7 @@ export class SymbolProfileService {
       .findMany({
         include: {
           _count: {
-            select: { Order: true }
+            select: { activities: true }
           },
           SymbolProfileOverrides: true
         },
@@ -184,8 +184,8 @@ export class SymbolProfileService {
 
   private enhanceSymbolProfiles(
     symbolProfiles: (SymbolProfile & {
-      _count: { Order: number };
-      Order?: {
+      _count: { activities: number };
+      activities?: {
         date: Date;
       }[];
       SymbolProfileOverrides: SymbolProfileOverrides;
@@ -209,11 +209,11 @@ export class SymbolProfileService {
         symbolMapping: this.getSymbolMapping(symbolProfile)
       };
 
-      item.activitiesCount = symbolProfile._count.Order;
+      item.activitiesCount = symbolProfile._count.activities;
       delete item._count;
 
-      item.dateOfFirstActivity = symbolProfile.Order?.[0]?.date;
-      delete item.Order;
+      item.dateOfFirstActivity = symbolProfile.activities?.[0]?.date;
+      delete item.activities;
 
       if (item.SymbolProfileOverrides) {
         item.assetClass =

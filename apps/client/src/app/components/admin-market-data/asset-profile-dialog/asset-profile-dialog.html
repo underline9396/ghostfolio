@@ -19,7 +19,9 @@
       <button
         mat-menu-item
         type="button"
-        [disabled]="assetProfileForm.dirty"
+        [disabled]="
+          assetProfileForm.dirty || !assetProfileForm.controls.isActive.value
+        "
         (click)="
           onGatherSymbol({ dataSource: data.dataSource, symbol: data.symbol })
         "
@@ -29,7 +31,9 @@
       <button
         mat-menu-item
         type="button"
-        [disabled]="assetProfileForm.dirty"
+        [disabled]="
+          assetProfileForm.dirty || !assetProfileForm.controls.isActive.value
+        "
         (click)="
           onGatherProfileDataBySymbol({
             dataSource: data.dataSource,
@@ -73,17 +77,29 @@
       [showYAxis]="true"
       [symbol]="data.symbol"
     />
-    <gf-historical-market-data-editor
-      class="mb-3"
-      [currency]="assetProfile?.currency"
-      [dataSource]="data.dataSource"
-      [dateOfFirstActivity]="assetProfile?.dateOfFirstActivity"
-      [locale]="data.locale"
-      [marketData]="marketDataItems"
-      [symbol]="data.symbol"
-      [user]="user"
-      (marketDataChanged)="onMarketDataChanged($event)"
-    />
+    <div class="mb-3">
+      <mat-accordion class="my-3">
+        <mat-expansion-panel class="shadow-none">
+          <mat-expansion-panel-header class="p-0 pr-3">
+            <mat-panel-title class="font-weight-bold" i18n
+              >Historical Market Data</mat-panel-title
+            >
+          </mat-expansion-panel-header>
+
+          <gf-historical-market-data-editor
+            class="mb-3"
+            [currency]="assetProfile?.currency"
+            [dataSource]="data.dataSource"
+            [dateOfFirstActivity]="assetProfile?.dateOfFirstActivity"
+            [locale]="data.locale"
+            [marketData]="marketDataItems"
+            [symbol]="data.symbol"
+            [user]="user"
+            (marketDataChanged)="onMarketDataChanged($event)"
+          />
+        </mat-expansion-panel>
+      </mat-accordion>
+    </div>
 
     <div class="row">
       @if (isEditAssetProfileIdentifierMode) {
@@ -241,20 +257,20 @@
             <div class="h5" i18n>Sectors</div>
             <gf-portfolio-proportion-chart
               [colorScheme]="data.colorScheme"
+              [data]="sectors"
               [isInPercent]="true"
               [keys]="['name']"
               [maxItems]="10"
-              [positions]="sectors"
             />
           </div>
           <div class="col-md-6 mb-3">
             <div class="h5" i18n>Countries</div>
             <gf-portfolio-proportion-chart
               [colorScheme]="data.colorScheme"
+              [data]="countries"
               [isInPercent]="true"
               [keys]="['name']"
               [maxItems]="10"
-              [positions]="countries"
             />
           </div>
         }
@@ -356,8 +372,10 @@
               (closed)="scraperConfiguationIsExpanded.set(false)"
               (opened)="scraperConfiguationIsExpanded.set(true)"
             >
-              <mat-expansion-panel-header class="p-0">
-                <mat-panel-title i18n>Scraper Configuration</mat-panel-title>
+              <mat-expansion-panel-header class="p-0 pr-3">
+                <mat-panel-title class="font-weight-bold" i18n
+                  >Scraper Configuration</mat-panel-title
+                >
               </mat-expansion-panel-header>
               <div formGroupName="scraperConfiguration">
                 <div class="mt-3">
@@ -489,7 +507,7 @@
           <mat-label i18n>Url</mat-label>
           <input formControlName="url" matInput type="text" />
           @if (assetProfileForm.get('url').value) {
-            <gf-asset-profile-icon
+            <gf-entity-logo
               class="mr-3"
               matSuffix
               [url]="assetProfileForm.get('url').value"
